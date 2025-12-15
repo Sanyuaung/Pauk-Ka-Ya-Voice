@@ -1,0 +1,7 @@
+{
+  "name": "Pauk-Ka-Ya Voice",
+  "description": "A fun and accurate Burmese speech-to-text tool.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
