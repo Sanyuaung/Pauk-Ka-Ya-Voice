@@ -6,7 +6,8 @@ import ResultDisplay from './components/ResultDisplay';
 import Waveform from './components/Waveform';
 import ToastContainer from './components/ToastContainer';
 import HistoryModal from './components/HistoryModal';
-import { MessageCircleHeart, Sparkles, History } from 'lucide-react';
+import HelpModal from './components/HelpModal';
+import { MessageCircleHeart, History, CircleHelp } from 'lucide-react';
 
 const RECORDING_LIMIT_SECONDS = 120;
 
@@ -16,11 +17,13 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isMicEnabled, setIsMicEnabled] = useState<boolean>(true);
+  const [isNoisyEnv, setIsNoisyEnv] = useState<boolean>(false);
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
   
   // New State
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -68,6 +71,10 @@ const App: React.FC = () => {
     setIsMicEnabled(prev => !prev);
   };
 
+  const toggleNoisyEnv = () => {
+    setIsNoisyEnv(prev => !prev);
+  };
+
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
       mediaRecorderRef.current.stop();
@@ -93,7 +100,15 @@ const App: React.FC = () => {
     }
 
     try {
-      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Enhanced audio constraints for Noise Cancellation
+      const audioStream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1, // Mono is usually better for speech recognition
+        } 
+      });
       setStream(audioStream);
       
       const mediaRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm' });
@@ -106,8 +121,10 @@ const App: React.FC = () => {
       };
 
       mediaRecorder.onstop = async () => {
+        // Stop all tracks to release microphone
         audioStream.getTracks().forEach(track => track.stop());
         setStream(null);
+        
         const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
         await handleTranscription(audioBlob);
       };
@@ -130,7 +147,7 @@ const App: React.FC = () => {
 
   const handleTranscription = async (blob: Blob) => {
     try {
-      const result = await transcribeAudio(blob);
+      const result = await transcribeAudio(blob, isNoisyEnv);
       setTranscription(result);
       setAppState(AppState.COMPLETED);
       saveToHistory(result);
@@ -174,6 +191,11 @@ const App: React.FC = () => {
         }}
       />
 
+      <HelpModal 
+        isOpen={isHelpOpen} 
+        onClose={() => setIsHelpOpen(false)} 
+      />
+
       {/* Header */}
       <header className="py-5 px-6 sticky top-0 z-30 bg-[#FFF8F0]/90 backdrop-blur-md border-b border-orange-50/50">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
@@ -188,13 +210,22 @@ const App: React.FC = () => {
              </div>
           </div>
           
-          <button 
-            onClick={() => setIsHistoryOpen(true)}
-            className="p-2.5 rounded-full bg-white text-slate-500 hover:text-orange-500 hover:bg-orange-50 transition-all shadow-sm border border-slate-100"
-            title="History"
-          >
-            <History className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setIsHelpOpen(true)}
+              className="p-2.5 rounded-full bg-white text-slate-500 hover:text-orange-500 hover:bg-orange-50 transition-all shadow-sm border border-slate-100"
+              title="Help & Guide"
+            >
+              <CircleHelp className="h-5 w-5" />
+            </button>
+            <button 
+              onClick={() => setIsHistoryOpen(true)}
+              className="p-2.5 rounded-full bg-white text-slate-500 hover:text-orange-500 hover:bg-orange-50 transition-all shadow-sm border border-slate-100"
+              title="History"
+            >
+              <History className="h-5 w-5" />
+            </button>
+          </div>
         </div>
       </header>
 
@@ -229,6 +260,8 @@ const App: React.FC = () => {
           isMicEnabled={isMicEnabled}
           onToggleMic={toggleMic}
           recordingDuration={recordingDuration}
+          isNoisyEnv={isNoisyEnv}
+          onToggleNoiseEnv={toggleNoisyEnv}
         />
       </footer>
     </div>

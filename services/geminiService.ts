@@ -5,7 +5,7 @@ const API_KEY = process.env.API_KEY || '';
 
 const ai = new GoogleGenAI({ apiKey: API_KEY });
 
-export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
+export const transcribeAudio = async (audioBlob: Blob, isNoisyEnv: boolean = false): Promise<string> => {
   if (!API_KEY) {
     throw new Error("API Key is missing. Please check your environment configuration.");
   }
@@ -13,6 +13,14 @@ export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
   try {
     const base64Audio = await blobToBase64(audioBlob);
     const mimeType = audioBlob.type || 'audio/webm';
+
+    let promptInstructions = "Transcribe the following audio exactly into Burmese (Myanmar) text. Return ONLY the transcribed text. Do not provide any translation, intro, or markdown formatting. The output should be formatted as a natural paragraph.";
+
+    if (isNoisyEnv) {
+      promptInstructions += " IMPORTANT: The audio was recorded in a NOISY ENVIRONMENT. Aggressively IGNORE background chatter, traffic, static, and other voices. Focus STRICTLY on the dominant speaker's voice.";
+    } else {
+      promptInstructions += " Ignore minor background noise if any.";
+    }
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
@@ -25,7 +33,7 @@ export const transcribeAudio = async (audioBlob: Blob): Promise<string> => {
             }
           },
           {
-            text: "Transcribe the following audio exactly into Burmese (Myanmar) text. Return ONLY the transcribed text. Do not provide any translation, intro, or markdown formatting. The output should be formatted as a natural paragraph."
+            text: promptInstructions
           }
         ]
       }

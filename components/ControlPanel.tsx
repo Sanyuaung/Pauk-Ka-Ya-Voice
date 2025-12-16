@@ -1,5 +1,5 @@
 import React from 'react';
-import { Mic, MicOff, Square, Loader2, RotateCcw } from 'lucide-react';
+import { Mic, MicOff, Square, Loader2, RotateCcw, Zap } from 'lucide-react';
 import { AppState } from '../types';
 
 interface ControlPanelProps {
@@ -10,6 +10,8 @@ interface ControlPanelProps {
   isMicEnabled: boolean;
   onToggleMic: () => void;
   recordingDuration: number;
+  isNoisyEnv: boolean;
+  onToggleNoiseEnv: () => void;
 }
 
 const formatTime = (seconds: number) => {
@@ -25,32 +27,52 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   onReset,
   isMicEnabled,
   onToggleMic,
-  recordingDuration
+  recordingDuration,
+  isNoisyEnv,
+  onToggleNoiseEnv
 }) => {
   return (
     <div className="flex flex-col items-center gap-4 w-full max-w-lg mx-auto">
       
-      {/* Mic Toggle Switch (Visible when IDLE) */}
+      {/* Toggles (Visible when IDLE) */}
       {appState === AppState.IDLE && (
-        <div 
-            onClick={onToggleMic}
-            className="cursor-pointer flex items-center gap-3 bg-white/80 px-5 py-2 rounded-full shadow-sm border border-orange-100 hover:bg-white transition-colors select-none"
-        >
-          <span className="text-[10px] font-bold text-orange-400 uppercase tracking-widest">Mic Access</span>
-          <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-              isMicEnabled ? 'bg-green-400' : 'bg-slate-200'
-            }`}
+        <div className="flex flex-wrap justify-center gap-3 w-full">
+          {/* Mic Access Toggle */}
+          <div 
+              onClick={onToggleMic}
+              className="cursor-pointer flex items-center gap-3 bg-white/80 px-4 py-2 rounded-full shadow-sm border border-orange-100 hover:bg-white transition-colors select-none"
           >
-            <span
-              className={`${
-                isMicEnabled ? 'translate-x-4' : 'translate-x-1'
-              } inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm`}
-            />
+            <span className="text-[10px] font-bold text-orange-400 uppercase tracking-widest">Mic Access</span>
+            <div className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                isMicEnabled ? 'bg-green-400' : 'bg-slate-200'
+              }`}
+            >
+              <span
+                className={`${
+                  isMicEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
+                } inline-block h-3 w-3 transform rounded-full bg-white transition-transform shadow-sm`}
+              />
+            </div>
+          </div>
+
+          {/* Noisy Environment Toggle */}
+          <div 
+              onClick={onToggleNoiseEnv}
+              className={`cursor-pointer flex items-center gap-2 px-4 py-2 rounded-full shadow-sm border transition-all select-none ${
+                isNoisyEnv ? 'bg-blue-50 border-blue-200' : 'bg-white/80 border-slate-200 hover:bg-white'
+              }`}
+          >
+             <div className={`p-1 rounded-full ${isNoisyEnv ? 'bg-blue-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                <Zap className="h-3 w-3 fill-current" />
+             </div>
+             <span className={`text-[10px] font-bold uppercase tracking-widest ${isNoisyEnv ? 'text-blue-600' : 'text-slate-400'}`}>
+                Noisy Area
+             </span>
           </div>
         </div>
       )}
 
-      <div className="flex items-center justify-center gap-8 w-full">
+      <div className="flex items-center justify-center gap-8 w-full mt-2">
         {appState === AppState.IDLE && (
           <button
             onClick={onStartRecording}
