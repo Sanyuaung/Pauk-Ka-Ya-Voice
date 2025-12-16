@@ -1,12 +1,14 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { AppState } from './types';
+import { AppState, HistoryItem, ToastMessage } from './types';
 import { transcribeAudio } from './services/geminiService';
 import ControlPanel from './components/ControlPanel';
 import ResultDisplay from './components/ResultDisplay';
 import Waveform from './components/Waveform';
-import { MessageCircleHeart, Sparkles } from 'lucide-react';
+import ToastContainer from './components/ToastContainer';
+import HistoryModal from './components/HistoryModal';
+import { MessageCircleHeart, Sparkles, History } from 'lucide-react';
 
-const RECORDING_LIMIT_SECONDS = 120; // 2 minutes limit
+const RECORDING_LIMIT_SECONDS = 120;
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
@@ -15,10 +17,56 @@ const App: React.FC = () => {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [isMicEnabled, setIsMicEnabled] = useState<boolean>(true);
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
+  
+  // New State
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<number | null>(null);
+
+  // Load history on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('voice_history');
+    if (saved) {
+      try {
+        setHistory(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to load history");
+      }
+    }
+  }, []);
+
+  // Save history helper
+  const saveToHistory = (text: string) => {
+    if (!text) return;
+    const newItem: HistoryItem = {
+      id: Date.now().toString(),
+      text,
+      timestamp: Date.now(),
+    };
+    const newHistory = [newItem, ...history].slice(0, 50); // Keep last 50
+    setHistory(newHistory);
+    localStorage.setItem('voice_history', JSON.stringify(newHistory));
+  };
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info') => {
+    const id = Date.now().toString();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 3000);
+  };
+
+  const removeToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  const toggleMic = () => {
+    setIsMicEnabled(prev => !prev);
+  };
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
@@ -31,38 +79,35 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Watch for duration limit
   useEffect(() => {
     if (appState === AppState.RECORDING && recordingDuration >= RECORDING_LIMIT_SECONDS) {
       stopRecording();
+      showToast("Time limit reached", "info");
     }
   }, [recordingDuration, appState, stopRecording]);
 
   const startRecording = useCallback(async () => {
-    if (!isMicEnabled) return;
+    if (!isMicEnabled) {
+      showToast("Please enable microphone access", "error");
+      return;
+    }
 
     try {
       const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setStream(audioStream);
       
-      const mediaRecorder = new MediaRecorder(audioStream, {
-        mimeType: 'audio/webm'
-      });
-      
+      const mediaRecorder = new MediaRecorder(audioStream, { mimeType: 'audio/webm' });
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
       setRecordingDuration(0);
 
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
+        if (event.data.size > 0) chunksRef.current.push(event.data);
       };
 
       mediaRecorder.onstop = async () => {
         audioStream.getTracks().forEach(track => track.stop());
         setStream(null);
-
         const audioBlob = new Blob(chunksRef.current, { type: 'audio/webm' });
         await handleTranscription(audioBlob);
       };
@@ -77,8 +122,9 @@ const App: React.FC = () => {
 
     } catch (err) {
       console.error("Error accessing microphone:", err);
-      setError("Microphone access denied. Please enable permissions.");
+      setError("Microphone access denied.");
       setAppState(AppState.ERROR);
+      showToast("Microphone access denied", "error");
     }
   }, [isMicEnabled]);
 
@@ -87,10 +133,18 @@ const App: React.FC = () => {
       const result = await transcribeAudio(blob);
       setTranscription(result);
       setAppState(AppState.COMPLETED);
+      saveToHistory(result);
+      showToast("Transcription complete", "success");
     } catch (err: any) {
       setError(err.message || "Failed to process audio.");
       setAppState(AppState.ERROR);
+      showToast("Failed to process", "error");
     }
+  };
+
+  const handleRefinedText = (newText: string) => {
+    setTranscription(newText);
+    saveToHistory(newText); // Save the refined version too
   };
 
   const resetApp = () => {
@@ -101,42 +155,52 @@ const App: React.FC = () => {
     if (timerRef.current) clearInterval(timerRef.current);
   };
 
-  const toggleMic = () => {
-    setIsMicEnabled(!isMicEnabled);
-  };
-
   return (
     <div className="min-h-screen bg-[#FFF8F0] flex flex-col font-sans text-slate-900">
-      {/* Playful Header */}
-      <header className="py-6 px-6 sticky top-0 z-30 bg-[#FFF8F0]/90 backdrop-blur-sm">
-        <div className="max-w-4xl mx-auto flex items-center justify-center relative">
-          <div className="flex flex-col items-center">
-             <div className="flex items-center gap-3 mb-1">
-                <div className="bg-orange-500 text-white p-2 rounded-2xl shadow-lg shadow-orange-200 rotate-3">
-                    <MessageCircleHeart className="h-6 w-6" />
-                </div>
-                <h1 className="text-2xl font-black tracking-tight text-slate-800 font-['Padauk']">
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+      
+      <HistoryModal 
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        history={history}
+        onSelect={(item) => {
+          setTranscription(item.text);
+          setAppState(AppState.COMPLETED);
+          setIsHistoryOpen(false);
+        }}
+        onClear={() => {
+          setHistory([]);
+          localStorage.removeItem('voice_history');
+        }}
+      />
+
+      {/* Header */}
+      <header className="py-5 px-6 sticky top-0 z-30 bg-[#FFF8F0]/90 backdrop-blur-md border-b border-orange-50/50">
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+             <div className="bg-gradient-to-tr from-orange-500 to-amber-500 text-white p-2 rounded-2xl shadow-lg shadow-orange-200 rotate-3 transition-transform hover:rotate-6">
+                <MessageCircleHeart className="h-5 w-5" />
+             </div>
+             <div>
+                <h1 className="text-xl font-black tracking-tight text-slate-800 font-['Padauk']">
                     Pauk-Ka-Ya Voice
                 </h1>
-                <Sparkles className="h-5 w-5 text-yellow-400 fill-current animate-pulse" />
              </div>
-             <p className="text-xs font-medium text-orange-400 uppercase tracking-widest bg-orange-50 px-3 py-1 rounded-full">
-                Fun & Easy Burmese Scribe
-             </p>
           </div>
+          
+          <button 
+            onClick={() => setIsHistoryOpen(true)}
+            className="p-2.5 rounded-full bg-white text-slate-500 hover:text-orange-500 hover:bg-orange-50 transition-all shadow-sm border border-slate-100"
+            title="History"
+          >
+            <History className="h-5 w-5" />
+          </button>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col items-center max-w-2xl mx-auto w-full p-4 pb-0">
         
-        {recordingDuration >= RECORDING_LIMIT_SECONDS && appState === AppState.PROCESSING && (
-           <div className="mb-6 px-6 py-3 bg-red-50 text-red-500 text-xs font-bold rounded-2xl border border-red-100 flex items-center gap-2 shadow-sm">
-             <span className="h-2 w-2 rounded-full bg-red-500 animate-ping"></span>
-             Limit reached! Wrapping up...
-           </div>
-        )}
-
         {/* Visualizer Area */}
         <div className="w-full mb-6 transform transition-all duration-500 hover:scale-[1.01]">
           <Waveform isRecording={appState === AppState.RECORDING} stream={stream} />
@@ -148,6 +212,8 @@ const App: React.FC = () => {
             appState={appState} 
             transcription={transcription}
             error={error}
+            onRefined={handleRefinedText}
+            showToast={showToast}
           />
         </div>
 

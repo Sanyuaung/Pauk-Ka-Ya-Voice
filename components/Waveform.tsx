@@ -7,7 +7,7 @@ interface WaveformProps {
 
 const Waveform: React.FC<WaveformProps> = ({ isRecording, stream }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationRef = useRef<number>();
+  const animationRef = useRef<number | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const dataArrayRef = useRef<Uint8Array | null>(null);
 
